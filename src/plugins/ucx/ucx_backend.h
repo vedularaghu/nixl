@@ -23,6 +23,7 @@
 #include <iostream>
 #include <thread>
 #include <mutex>
+#include <shared_mutex>
 #include <memory>
 #include <condition_variable>
 #include <atomic>
@@ -222,6 +223,15 @@ public:
 
     void releaseMemView(nixlMemViewH) const override;
 
+    // Held shared by the progress threads while they poll a worker, and exclusively by
+    // deregisterMem(). A zcopy completion running inside ucp_worker_progress() dereferences the
+    // ucp_mem_h the operation was posted with, so ucp_mem_unmap() must not run concurrently with
+    // a progress call, or the completion faults on a freed memh.
+    std::shared_mutex &
+    getMemMtx() const {
+        return memMtx_;
+    }
+
 protected:
     using worker_span_t = std::span<const std::unique_ptr<nixlUcxWorker>>;
 
@@ -314,6 +324,7 @@ private:
     std::string workerAddr;
     mutable std::atomic<size_t> sharedWorkerIndex_;
     const bool sglEnabled_;
+    mutable std::shared_mutex memMtx_;
 
     // Map of agent name to saved nixlUcxConnection info
     std::unordered_map<std::string, ucx_connection_ptr_t> remoteConnMap;

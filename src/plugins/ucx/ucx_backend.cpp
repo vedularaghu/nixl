@@ -26,6 +26,7 @@
 #include <optional>
 #include <limits>
 #include <future>
+#include <shared_mutex>
 #include <thread>
 #include <string.h>
 #include <unistd.h>
@@ -356,6 +357,11 @@ public:
     }
 
 protected:
+    const nixlUcxEngine *
+    getEngine() const {
+        return engine_;
+    }
+
     virtual void
     run() = 0;
 
@@ -417,6 +423,7 @@ protected:
                 if (!(pollFds_[i].revents & POLLIN) && !timeout) continue;
                 pollFds_[i].revents = 0;
                 nixlUcxWorker *worker = getWorkers()[i];
+                const std::shared_lock<std::shared_mutex> guard(getEngine()->getMemMtx());
                 do {
                     worker->progressLoop();
                 } while (worker->arm() == NIXL_IN_PROG);
@@ -1053,6 +1060,7 @@ nixl_status_t nixlUcxEngine::registerMem (const nixlBlobDesc &mem,
 
 nixl_status_t nixlUcxEngine::deregisterMem (nixlBackendMD* meta)
 {
+    const std::unique_lock<std::shared_mutex> guard(memMtx_);
     nixlUcxPrivateMetadata *priv = (nixlUcxPrivateMetadata*) meta;
     uc->memDereg(priv->mem);
     delete priv;
